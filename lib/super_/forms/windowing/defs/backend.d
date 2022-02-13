@@ -1,11 +1,11 @@
-module super_.forms.windowing.platforms.defs.backend;
+module super_.forms.windowing.defs.backend;
 
 @safe:
 
 import erupted;
 import std.algorithm;
 import super_.forms.widgets;
-import super_.forms.windowing.platforms.defs;
+import super_.forms.windowing;
 import super_.forms.utils;
 
 package(super_.forms) ushort[BackendBuilder] backendScores;
@@ -21,15 +21,11 @@ shared synchronized interface Backend {
     /++
      + Poll events for main loop.
      +/
-    void pollEvents();
+    void waitForEvents();
     /++
      + VkExtension required for backend.
      +/
     string[] requiredExtensions();
-    /++
-     + Load vulkan instance-level functions.
-     +/
-    void loadVulkanFunctions(ref VkInstance instance);
 }
 
 /++

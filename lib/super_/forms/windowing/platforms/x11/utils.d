@@ -54,3 +54,31 @@ xcb_atom_t atom(string name)(immutable xcb_connection_t* connection) @trusted {
         throw new X11Exception!xcb_atom_t();
     return a;
 }
+
+nothrow @nogc @trusted {
+    import erupted;
+    struct VkXcbSurfaceCreateInfoKHR {
+        VkStructureType             sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
+        const( void )*              pNext;
+        VkFlags                     flags;
+        xcb_connection_t*           connection;
+        xcb_window_t                window;
+    }
+
+    alias PFN_vkCreateXcbSurfaceKHR                                             = extern(C) VkResult  function( VkInstance instance, const( VkXcbSurfaceCreateInfoKHR )* pCreateInfo, const( VkAllocationCallbacks )* pAllocator, VkSurfaceKHR* pSurface );
+    alias PFN_vkGetPhysicalDeviceXcbPresentationSupportKHR                      = extern(C) VkBool32  function( VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex, xcb_connection_t* connection, xcb_visualid_t visual_id );
+
+    __gshared {
+        PFN_vkCreateXcbSurfaceKHR                                             vkCreateXcbSurfaceKHR;
+        PFN_vkGetPhysicalDeviceXcbPresentationSupportKHR                      vkGetPhysicalDeviceXcbPresentationSupportKHR;
+    }
+
+    void loadInstanceFuncs(VkInstance instance) {
+        if (!vkCreateXcbSurfaceKHR) {
+            vkCreateXcbSurfaceKHR                                             = cast( PFN_vkCreateXcbSurfaceKHR                                             ) vkGetInstanceProcAddr( instance, "vkCreateXcbSurfaceKHR" );
+        }
+        if (!vkGetPhysicalDeviceXcbPresentationSupportKHR) {
+            vkGetPhysicalDeviceXcbPresentationSupportKHR                      = cast( PFN_vkGetPhysicalDeviceXcbPresentationSupportKHR                      ) vkGetInstanceProcAddr( instance, "vkGetPhysicalDeviceXcbPresentationSupportKHR" );
+        }
+    }
+}

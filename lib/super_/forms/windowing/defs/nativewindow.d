@@ -1,4 +1,4 @@
-module super_.forms.windowing.platforms.defs.nativewindow;
+module super_.forms.windowing.defs.nativewindow;
 
 import erupted;
 import std.typecons;

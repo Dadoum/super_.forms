@@ -5,18 +5,10 @@
 
 The ultimate windowing library.
 
-## Link with beamui:
+## Why another GUI library?
 
-It shares the foundations with beamui, but cleans up the API,
-which is way too complex to me, and abandon of CSS, which is 
-Reusing beamui's foundation, but not API, which is overcomplex to me, 
-and nor the CSS, which although its themability, complexifies the code 
-Moreover, with a code-only approach, it could make the code faster.
-
-However, super_.forms also aims more than beamui on certain aspects, most notably 
-on widgets that are available : by example, I plan to implement WebKit and Wayland in a not-so-far-away future.
-
-See super_.forms as a continuation of Gtk+ 2's philosophy.
+See super_.forms as a continuation of Gtk+ 2's philosophy. Do most of the things you want
+and have a stable API to build upon with newer technologies.
 
 ## Roadmap
 
@@ -25,6 +17,12 @@ See super_.forms as a continuation of Gtk+ 2's philosophy.
 - [ ] Optional localization in code using D -version flags (by default only English is enabled, but with flag -version=Français by example you will be able to code in French)
 - [ ] Wayland support
 - [ ] WebKit view
+- 
+## Problèmes connus:
+
+- X11 support is working only with GDC, for unknown reason.
+  (problematic file: vkxcb.d)
+-
 
 ## Code sample that I will try to make it work:
 
@@ -34,27 +32,27 @@ int main() {
     import std.duration: dur;
     
     Application app = new Application("com.dadoum.example");
-    Window w = c!Window("Exemple").set!(Window.size)(Size(400, 800)).set!(Window.resizeable)(false) [
-        c!Stack [
-            c!Column [
-                c!Paragraph [
+    Window w = new Window("Exemple").set!(Window.size)(Size(400, 800)).set!(Window.resizeable)(false) [
+        new Stack [
+            new Column [
+                new Paragraph [
                     "Use ", Link("https://github.com/Dadoum/super_forms", "super_.forms"), " !"
                 ],
-                c!Button("click here !").set!(IdentifierE.id)("btnClickHere")
+                new Button("click here !").identify!("btnClickHere")
             ],
-            c!Fixed [
-                c!Panel 
+            new Fixed [
+                new Panel 
                     .set!(FixedChildE.position) (Point(0, 800))
                     .set!(Widget.visible)       (false)
-                    .set!(IdentifierE.id)       ("fixedAnimated") [
-                    c!Text("You clicked !")
+                    .identify!"fixedAnimated"() [
+                    new Text("You clicked !")
                 ]
             ]
         ]
     ];
     
-    auto btn = IdentifierE.widgetFromId!Button("btnClickHere");
-    auto fixed = IdentifierE.widgetFromId!Fixed("fixedAnimated");
+    auto btn = cast(Buttton) Widget.fromId!"btnClickHere";
+    auto fixed = cast(Fixed) Widget.fromId!"fixedAnimated";
     
     auto anim = new Animation(
         (x) {
@@ -65,6 +63,7 @@ int main() {
     );
     
     btn.clicked ~= () {
+        fixed.visible = true;
         if (!anim.running)
             anim.start;
     };

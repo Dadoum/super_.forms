@@ -1,4 +1,4 @@
-module super_.forms.windowing.platforms.defs;
+module super_.forms.windowing.defs;
 
-public import super_.forms.windowing.platforms.defs.backend;
-public import super_.forms.windowing.platforms.defs.nativewindow;
+public import super_.forms.windowing.defs.backend;
+public import super_.forms.windowing.defs.nativewindow;

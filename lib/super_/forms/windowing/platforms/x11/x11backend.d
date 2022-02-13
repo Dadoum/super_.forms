@@ -7,7 +7,7 @@ import erupted;
 import std.string;
 import super_.forms.widgets: SFWindow = Window;
 import super_.forms.application;
-import super_.forms.windowing.platforms.defs;
+import super_.forms.windowing.defs;
 import super_.forms.windowing.platforms.x11;
 import super_.forms.windowing.platforms.x11.utils;
 import super_.forms.utils;
@@ -22,16 +22,11 @@ import super_.forms.utils;
         connection = cast(immutable(xcb_connection_t*)) assertNotNull!xcb_connect(null, null);
     }
 
-    public void loadVulkanFunctions(ref VkInstance instance) @trusted {
-        instance.loadInstanceLevelFunctionsExt();
+    public shared(NativeWindow) createWindow(SFWindow win) shared @safe {
+        return new shared X11Window(this, win);
     }
 
-    public shared(NativeWindow) createWindow(SFWindow win) shared @trusted {
-        auto window = new shared X11Window(this, win);
-        return window;
-    }
-
-    public void pollEvents() @trusted {
+    public void waitForEvents() @trusted {
         import std.stdio;
         static xcb_generic_event_t* event;
 
@@ -55,7 +50,7 @@ import super_.forms.utils;
     }
 
     string[] requiredExtensions() @trusted {
-        return [VK_KHR_XCB_SURFACE_EXTENSION_NAME];
+        return ["VK_KHR_xcb_surface"];
     }
 }
 
@@ -72,6 +67,3 @@ class X11BackendBuilder: BackendBuilder {
 shared static this() {
     registerBackendBuilder(new X11BackendBuilder);
 }
-
-import erupted.platform_extensions;
-package(super_.forms.windowing.platforms.x11) mixin Platform_Extensions!USE_PLATFORM_XCB_KHR;

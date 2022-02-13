@@ -5,15 +5,15 @@ version(X11):
 import xcb.xcb;
 import erupted;
 import super_.forms.application;
-import super_.forms.windowing.platforms.x11;
 import super_.forms.windowing.platforms.x11.utils;
-import super_.forms.windowing.platforms.defs;
+import super_.forms.windowing.defs;
 import super_.forms.widgets: SFWindow = Window;
 import super_.forms.utils;
 import std.typecons;
 import tinyevent;
 
 @safe shared synchronized class X11Window: NativeWindow {
+    import super_.forms.windowing.platforms.x11;
     package(super_.forms.windowing.platforms.x11) {
         xcb_window_t windowHandle;
         xcb_screen_t* screen;
@@ -97,7 +97,8 @@ import tinyevent;
                 connection: connection,
             };
 
-            Application.instance.skiaBackendContext.instance.vkSuccessOrDie!vkCreateXcbSurfaceKHR(
+            loadInstanceFuncs(Application.instance.backendContext.instance);
+            Application.instance.backendContext.instance.vkCreateXcbSurfaceKHR(
                 &vkXcbSurfaceCreateInfo,
                 null,
                 cast(VkSurfaceKHR*) &vkSurfaceKHR
@@ -146,8 +147,9 @@ import tinyevent;
         return closedEvent;
     }
 
-    ~this() {
+    ~this() @trusted {
         backend.nativeWindowToDObject.remove(windowHandle);
+        xcb_destroy_window(connection, windowHandle);
     }
 
     void hide() @trusted {
@@ -159,11 +161,10 @@ import tinyevent;
     }
 
     bool canPresent(VkPhysicalDevice physicalDevice, int index) @trusted {
-        return vkGetPhysicalDeviceXcbPresentationSupportKHR(
-        physicalDevice,
-        index,
-        connection,
-        screen.root_visual
+        return physicalDevice.vkGetPhysicalDeviceXcbPresentationSupportKHR(
+            index,
+            connection,
+            screen.root_visual
         ) == VK_TRUE;
     }
 

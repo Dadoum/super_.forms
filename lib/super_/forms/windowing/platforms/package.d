@@ -1,6 +1,6 @@
 module super_.forms.windowing.platforms;
 
-public import super_.forms.windowing.platforms.defs;
+public import super_.forms.windowing.defs;
 
 import super_.forms.windowing.platforms.cocoa;
 import super_.forms.windowing.platforms.wayland;

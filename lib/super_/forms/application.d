@@ -3,18 +3,37 @@ module super_.forms.application;
 import core.runtime: Runtime;
 import ddbus;
 import erupted.functions;
-import skia;
+import erupted.vulkan_lib_loader;
 import std.algorithm;
 import std.array;
+import std.concurrency;
+import std.datetime;
 import std.stdio;
 import std.string;
 import std.traits;
 import super_.forms;
+import super_.forms.drawing;
 import tinyevent;
 
 enum ApplicationFlags {
     none = 0,
     unique = 1 << 0
+}
+
+struct VkContext {
+    VkInstance                        instance;
+    VkPhysicalDevice                  physicalDevice;
+    VkDevice                          device;
+    VkQueue                           queue;
+    uint                              graphicsQueueIndex;
+    uint                              extensions = 0;
+    uint                              features;
+    const(VkPhysicalDeviceFeatures)*  deviceFeatures = null;
+    const(VkPhysicalDeviceFeatures2)* deviceFeatures2 = null;
+    VkSurfaceFormatKHR                format;
+
+    // VkVg types
+    super_.forms.drawing.Device                       vkvgDevice;
 }
 
 public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
@@ -26,16 +45,18 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
     private immutable(string) identifier;
     private const(ApplicationFlags) flags;
     private __gshared Connection conn;
-    private bool interrupted;
-    private int exitCode = 0;
+    private shared(int) ids;
+    private shared(bool[]) idRunning;
+    private shared(bool) interrupted;
+    private shared(bool) launched = false;
+    private shared(int) exitCode = 0;
+    private shared(bool) requiresDbusCheck = false;
 
     private Event!(string[]) startedEvent;
     private Event!(string[]) activatedEvent;
 
     package(super_.forms) shared(Backend) backend;
-    package(super_.forms) shared(Extension)[][Widget] widgetExtensions;
-    package(super_.forms) __gshared GrVkBackendContext skiaBackendContext;
-    package(super_.forms) __gshared GrDirectContext grContext;
+    package(super_.forms) __gshared VkContext backendContext = VkContext();
 
     static shared(Application) instance;
 
@@ -58,6 +79,7 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
         string[] args = Runtime.args;
 
         if (flags & ApplicationFlags.unique) {
+            requiresDbusCheck = true;
             BusName bus = busName(identifier);
             InterfaceName iface = interfaceName(identifier);
             ObjectPath path = ObjectPath("/");
@@ -79,9 +101,6 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
 
         destroy(args);
 
-        import erupted.vulkan_lib_loader;
-        loadGlobalLevelFunctions;
-
         VkApplicationInfo appInfo = {
             pApplicationName: identifier.toStringz,
             apiVersion: vulkanApiVersion,
@@ -89,7 +108,9 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
 
         this.backend = BackendBuilder.buildBestBackend();
         immutable(char)*[] exts
-            = ["VK_KHR_surface".toStringz] ~ backend.requiredExtensions.map!((ext) => ext.toStringz).array;
+            = [VK_KHR_SURFACE_EXTENSION_NAME.toStringz] ~ backend.requiredExtensions.map!((ext) => ext.toStringz).array;
+
+        exts ~= "VK_EXT_debug_utils".toStringz;
 
         VkInstanceCreateInfo instInfo = {
             pApplicationInfo		: &appInfo,
@@ -97,84 +118,127 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
             ppEnabledExtensionNames	: exts.ptr,
         };
 
-        vkSuccessOrDie!vkCreateInstance(&instInfo, null, &skiaBackendContext.instance);
-        backend.loadVulkanFunctions(skiaBackendContext.instance);
+        vkSuccessOrDie!vkCreateInstance(&instInfo, null, &backendContext.instance);
+        loadInstanceLevelFunctions(backendContext.instance);
 
         uint numPhysDevices;
-        skiaBackendContext.instance.vkSuccessOrDie!vkEnumeratePhysicalDevices(&numPhysDevices, null);
+        backendContext.instance.vkSuccessOrDie!vkEnumeratePhysicalDevices(&numPhysDevices, null);
 
         VkPhysicalDevice[] physDevices = new VkPhysicalDevice[](numPhysDevices);
-        skiaBackendContext.instance.vkSuccessOrDie!vkEnumeratePhysicalDevices(&numPhysDevices, physDevices.ptr);
+        backendContext.instance.vkSuccessOrDie!vkEnumeratePhysicalDevices(&numPhysDevices, physDevices.ptr);
 
         // TODO: make setting selection screen for GPU
-        skiaBackendContext.physicalDevice = physDevices[0];
+        backendContext.physicalDevice = physDevices[0];
 
         uint32_t numQueues;
-        vkGetPhysicalDeviceQueueFamilyProperties(skiaBackendContext.physicalDevice, &numQueues, null);
+        vkGetPhysicalDeviceQueueFamilyProperties(backendContext.physicalDevice, &numQueues, null);
         assert(numQueues >= 1);
 
         auto queueFamilyProperties = new VkQueueFamilyProperties[](numQueues);
         vkGetPhysicalDeviceQueueFamilyProperties
-            (skiaBackendContext.physicalDevice, &numQueues, queueFamilyProperties.ptr);
+            (backendContext.physicalDevice, &numQueues, queueFamilyProperties.ptr);
         assert(numQueues >= 1);
 
-        skiaBackendContext.graphicsQueueIndex = uint.max;
+        backendContext.graphicsQueueIndex = uint.max;
         foreach(i, const ref properties; queueFamilyProperties) {
             if (properties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                if (skiaBackendContext.graphicsQueueIndex == uint.max) {
-                    skiaBackendContext.graphicsQueueIndex = cast(uint) i;
+                if (backendContext.graphicsQueueIndex == uint.max) {
+                    backendContext.graphicsQueueIndex = cast(uint) i;
                 }
             }
         }
 
-        if (skiaBackendContext.graphicsQueueIndex == uint.max)  {
-            skiaBackendContext.graphicsQueueIndex = 0;
+        if (backendContext.graphicsQueueIndex == uint.max)  {
+            backendContext.graphicsQueueIndex = 0;
         }
 
         const(float[1]) queuePriorities = [ 1.0f ];
         VkDeviceQueueCreateInfo queueCreateInfo = {
             queueCount			: 1,
             pQueuePriorities 	: queuePriorities.ptr,
-            queueFamilyIndex	: skiaBackendContext.graphicsQueueIndex,
+            queueFamilyIndex	: backendContext.graphicsQueueIndex,
         };
 
-        const(char*) swapchain_ext = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+        auto deviceExtensions = [VK_KHR_SWAPCHAIN_EXTENSION_NAME.toStringz];
 
         // prepare logical device creation
         VkDeviceCreateInfo deviceCreateInfo = {
             queueCreateInfoCount	: 1,
             pQueueCreateInfos		: &queueCreateInfo,
-            enabledExtensionCount   : 1,
-            ppEnabledExtensionNames : &swapchain_ext,
+            enabledExtensionCount   : cast(uint) deviceExtensions.length,
+            ppEnabledExtensionNames : deviceExtensions.ptr,
         };
 
-        vkCreateDevice(physDevices[0], &deviceCreateInfo, null, &skiaBackendContext.device);
-        skiaBackendContext.device.loadDeviceLevelFunctions();
+        vkCreateDevice(physDevices[0], &deviceCreateInfo, null, &backendContext.device);
+        loadDeviceLevelFunctions(backendContext.device);
 
-        skiaBackendContext.device.vkGetDeviceQueue(skiaBackendContext.graphicsQueueIndex, 0, &skiaBackendContext.queue);
+        backendContext.device.vkGetDeviceQueue(backendContext.graphicsQueueIndex, 0, &backendContext.queue);
 
-        grContext = new GrDirectContext(skiaBackendContext);
+        backendContext.format.format = VK_FORMAT_B8G8R8A8_SRGB;
+        backendContext.format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+
+        backendContext.vkvgDevice = new super_.forms.drawing.Device(
+            Application.instance.backendContext.instance,
+            Application.instance.backendContext.physicalDevice,
+            Application.instance.backendContext.device,
+            Application.instance.backendContext.graphicsQueueIndex,
+            0,
+        );
 
         this.identifier = identifier;
         this.flags = flags;
     }
 
     ~this() @trusted {
-        vkDestroyInstance(skiaBackendContext.instance, null);
+        vkDeviceWaitIdle(backendContext.device);
+
+        vkDestroyDevice(backendContext.device, null);
+        vkDestroyInstance(backendContext.instance, null);
+        freeVulkanLib();
         instance = null;
     }
 
+    package(super_.forms) int registerLoop(shared(void delegate() shared) del) @trusted {
+        import core.atomic;
+        shared(int) id = ids;
+        core.atomic.atomicOp!"+="(this.ids, 1);
+        idRunning ~= true;
+        spawn(() shared {
+            while (!launched) { }
+            while (idRunning[id]) {
+                del();
+            }
+        });
+        return id;
+    }
+
+    package(super_.forms) void unregisterLoop(int id) {
+        idRunning[id] = false;
+    }
+
     int run() @trusted {
+        import core.thread.osthread;
+        import std.concurrency;
+
         string[] args = Runtime.args;
         started.emit(args);
         destroy(args);
 
-        while (!interrupted) {
-            backend.pollEvents;
-            conn.tick();
+        if (flags & ApplicationFlags.unique) {
+            spawn(() shared {
+                while (!interrupted) {
+                    conn.tick();
+                    Thread.sleep(dur!"msecs"(200));
+                }
+            });
         }
 
-        return 0;
+        launched = true;
+        while (!interrupted) {
+            backend.waitForEvents;
+        }
+
+        return exitCode;
     }
 
     void exit(int exitCode = 0) {
@@ -184,17 +248,3 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
 }
 
 alias Application = shared(ApplicationPriv);
-
-class VulkanException(alias U): Exception {
-    this(VkResult result = cast(VkResult) null, string file = __FILE__, size_t line = __LINE__) {
-        import std.format;
-        super(format!"A fail occurred while calling \"%s\""(U.stringof) ~ (result == cast(VkResult) null ? "" : format!" (code %d)"(result)), file, line);
-    }
-}
-
-void vkSuccessOrDie(alias U)(auto ref Parameters!U args) {
-    auto result = U(args);
-    if (result != VK_SUCCESS) {
-        throw new VulkanException!U(result);
-    }
-}
