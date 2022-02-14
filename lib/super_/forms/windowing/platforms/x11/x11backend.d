@@ -31,21 +31,21 @@ import super_.forms.utils;
         static xcb_generic_event_t* event;
 
         xcb_flush(cast(xcb_connection_t*) connection);
-        while ((event = xcb_poll_for_event(cast(xcb_connection_t*) connection)) != null) {
-            switch (event.response_type) {
-                case XCB_CLIENT_MESSAGE | 1 << 7:
-                    auto event_cm = cast(xcb_client_message_event_t*) event;
-                    if (event_cm.data.data32[0] == connection.atom!"WM_DELETE_WINDOW"()) {
-                        shared X11Window* evented = event_cm.window in nativeWindowToDObject;
-                        if (evented !is null) {
-                            import tinyevent;
-                            evented.closed.emit;
-                        }
+        event = xcb_wait_for_event(cast(xcb_connection_t*) connection);
+
+        switch (event.response_type) {
+            case XCB_CLIENT_MESSAGE | 1 << 7:
+                auto event_cm = cast(xcb_client_message_event_t*) event;
+                if (event_cm.data.data32[0] == connection.atom!"WM_DELETE_WINDOW"()) {
+                    shared X11Window* evented = event_cm.window in nativeWindowToDObject;
+                    if (evented !is null) {
+                        import tinyevent;
+                        evented.closed.emit;
                     }
-                    break;
-                default:
-                    break;
-            }
+                }
+                break;
+            default:
+                break;
         }
     }
 

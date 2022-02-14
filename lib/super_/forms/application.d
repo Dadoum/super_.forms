@@ -45,8 +45,7 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
     private immutable(string) identifier;
     private const(ApplicationFlags) flags;
     private __gshared Connection conn;
-    private shared(int) ids;
-    private shared(bool[]) idRunning;
+    private shared(bool[]) idRunning = [];
     private shared(bool) interrupted;
     private shared(bool) launched = false;
     private shared(int) exitCode = 0;
@@ -198,10 +197,9 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
         instance = null;
     }
 
-    package(super_.forms) int registerLoop(shared(void delegate() shared) del) @trusted {
+    package(super_.forms) ulong registerLoop(shared(void delegate() shared) del) @trusted {
         import core.atomic;
-        shared(int) id = ids;
-        core.atomic.atomicOp!"+="(this.ids, 1);
+        shared(ulong) id = idRunning.length;
         idRunning ~= true;
         spawn(() shared {
             while (!launched) { }
@@ -212,7 +210,7 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
         return id;
     }
 
-    package(super_.forms) void unregisterLoop(int id) {
+    package(super_.forms) void unregisterLoop(ulong id) {
         idRunning[id] = false;
     }
 
@@ -238,10 +236,15 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
             backend.waitForEvents;
         }
 
+        foreach (ref idR; idRunning) {
+            idR = false;
+        }
+
         return exitCode;
     }
 
     void exit(int exitCode = 0) {
+        import std.stdio;
         this.exitCode = exitCode;
         interrupted = true;
     }

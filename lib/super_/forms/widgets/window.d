@@ -7,6 +7,27 @@ import super_.forms;
 import super_.forms.drawing;
 import tinyevent;
 
+package(super_.forms) shared struct DrawPayload {
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    VkSurfaceCapabilitiesKHR capabilities;
+
+    VkCommandPool commandPool;
+    VkCommandBuffer[] commandBuffers;
+    VkImage[] images;
+
+    VkFence[] fences;
+    VkSemaphore[] readySemaphores;
+    VkSemaphore[] doneSemaphores;
+
+    VkQueue presentQueue;
+    uint presentQueueIndex;
+
+    uint imageCount;
+    uint currentImage = 0;
+
+    ulong renderLoop = ulong.max;
+}
+
 /++
  + Represents a window, and abstracts the backend on top of a Widget.
  +/
@@ -62,26 +83,27 @@ import tinyevent;
         return nativeWindow.closed;
     }
 
-    private VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-    private VkSurfaceCapabilitiesKHR capabilities;
-    private VkCommandPool commandPool;
-    private VkCommandBuffer[] commandBuffers;
-    private VkFence drawFence;
-    private VkImage[] images;
-    private VkQueue presentQueue;
-    private uint presentQueueIndex;
-    private VkSemaphore[] drawSemaphores;
-    private uint imageCount;
-    private uint currentImage = 0;
+    package(super_.forms) shared(DrawPayload) drawPayload;
 
     private super_.forms.drawing.Surface vkvgSurface;
 
     ~this() @trusted {
         if (vkvgSurface)
             destroy(vkvgSurface);
+
+        if (drawPayload.renderLoop != ulong.max)
+            Application.instance.unregisterLoop(drawPayload.renderLoop);
+
         nativeWindow.hide();
-        Application.instance.backendContext.device.vkDestroySwapchainKHR(swapchain, null);
-        Application.instance.backendContext.device.vkDestroyCommandPool(commandPool, null);
+
+        for (int i = 0; i < drawPayload.imageCount; i++) {
+            Application.instance.backendContext.device.vkDestroySemaphore(cast(VkSemaphore) drawPayload.readySemaphores[i], null);
+            Application.instance.backendContext.device.vkDestroySemaphore(cast(VkSemaphore) drawPayload.doneSemaphores[i], null);
+            Application.instance.backendContext.device.vkDestroyFence(cast(VkFence) drawPayload.fences[i], null);
+        }
+
+        Application.instance.backendContext.device.vkDestroyCommandPool(cast(VkCommandPool) drawPayload.commandPool, null);
+        Application.instance.backendContext.device.vkDestroySwapchainKHR(cast(VkSwapchainKHR) drawPayload.swapchain, null);
         destroy(nativeWindow);
     }
 
@@ -95,38 +117,118 @@ import tinyevent;
         VkQueueFamilyProperties[] props = new VkQueueFamilyProperties[](queueCount);
         vkGetPhysicalDeviceQueueFamilyProperties(Application.instance.backendContext.physicalDevice, &queueCount, props.ptr);
 
-        presentQueueIndex = queueCount;
+        drawPayload.presentQueueIndex = queueCount;
         for (uint i = 0; i < queueCount; i++) {
             if (nativeWindow.canPresent(
                 Application.instance.backendContext.physicalDevice,
                 i
             )) {
-                presentQueueIndex = i;
+                drawPayload.presentQueueIndex = i;
                 break;
             }
         }
-        if (presentQueueIndex == queueCount) {
+        if (drawPayload.presentQueueIndex == queueCount) {
             throw new VulkanException!vkGetPhysicalDeviceQueueFamilyProperties();
         }
 
         vkGetDeviceQueue(
             Application.instance.backendContext.device,
-            presentQueueIndex,
+            cast(uint) drawPayload.presentQueueIndex,
             0,
-            &presentQueue,
+            cast(VkQueue*) &drawPayload.presentQueue,
         );
 
-        VkImageLayout[] imageLayouts = new VkImageLayout[](imageCount);
+        VkImageLayout[] imageLayouts = new VkImageLayout[](drawPayload.imageCount);
 
         createSwapchain();
 
-        this.render();
+        drawPayload.renderLoop = Application.instance.registerLoop(() shared {
+            with (drawPayload) {
+                Application.instance.backendContext.device.vkWaitForFences(1, cast(VkFence*) &fences[currentImage], VK_TRUE, ulong.max);
+
+                uint imageIndex;
+                VkResult result = Application.instance.backendContext.device.vkAcquireNextImageKHR(
+                    cast(VkSwapchainKHR) swapchain,
+                    ulong.max,
+                    cast(VkSemaphore) readySemaphores[currentImage],
+                    VK_NULL_HANDLE,
+                    &imageIndex
+                );
+
+                if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+                    createSwapchain();
+                    return;
+                } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+                    throw new VulkanException!vkAcquireNextImageKHR();
+                }
+
+                uint width = min(
+                max(drawPayload.capabilities.currentExtent.width, drawPayload.capabilities.minImageExtent.width),
+                drawPayload.capabilities.maxImageExtent.width
+                );
+
+                uint height = min(
+                max(drawPayload.capabilities.currentExtent.height, drawPayload.capabilities.minImageExtent.height),
+                drawPayload.capabilities.maxImageExtent.height
+                );
+
+                super_.forms.drawing.Context ctx = new super_.forms.drawing.Context(vkvgSurface);
+                ctx.setSourceRgb(0, 50, 0);
+                ctx.paint();
+                destroy(ctx);
+
+                VkSubmitInfo submitInfo;
+                submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+                VkSemaphore[] waitSemaphores = [cast(VkSemaphore) readySemaphores[currentImage]];
+                VkPipelineStageFlags[] waitStages = [VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT];
+                submitInfo.waitSemaphoreCount = 1;
+                submitInfo.pWaitSemaphores = waitSemaphores.ptr;
+                submitInfo.pWaitDstStageMask = waitStages.ptr;
+                submitInfo.commandBufferCount = 1;
+                submitInfo.pCommandBuffers = cast(VkCommandBuffer*) &commandBuffers[imageIndex];
+
+                VkSemaphore[] signalSemaphores = [cast(VkSemaphore) doneSemaphores[currentImage]];
+                submitInfo.signalSemaphoreCount = 1;
+                submitInfo.pSignalSemaphores = signalSemaphores.ptr;
+
+                VkQueue graphicsQueue;
+                vkGetDeviceQueue(
+                    Application.instance.backendContext.device,
+                    Application.instance.backendContext.graphicsQueueIndex,
+                    0,
+                    &graphicsQueue
+                );
+
+                Application.instance.backendContext.device.vkResetFences(1, cast(VkFence*) &fences[currentImage]);
+                vkSuccessOrDie!vkQueueSubmit(graphicsQueue, 1, &submitInfo, cast(VkFence) fences[currentImage]);
+
+                VkPresentInfoKHR presentInfo = {
+                    sType: VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+                    waitSemaphoreCount: 1,
+                    pWaitSemaphores: signalSemaphores.ptr,
+                    swapchainCount: 1,
+                    pSwapchains: [cast(VkSwapchainKHR) swapchain].ptr,
+                    pImageIndices: &imageIndex,
+                    pResults: null,
+                };
+
+                result = vkQueuePresentKHR(cast(VkQueue) presentQueue, &presentInfo);
+                if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+                    createSwapchain();
+                } else if (result != VK_SUCCESS) {
+                    throw new VulkanException!vkQueuePresentKHR();
+                }
+
+                currentImage = (currentImage + 1) % imageCount;
+            }
+        });
     }
 
     private void createSwapchain() @trusted {
         Application.instance.backendContext.physicalDevice.vkSuccessOrDie!vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-        cast(VkSurfaceKHR_handle*) vkSurface,
-        &capabilities
+        cast(VkSurfaceKHR) vkSurface,
+        cast(VkSurfaceCapabilitiesKHR*) &drawPayload.capabilities
         );
 
         uint sfBufCount;
@@ -156,10 +258,10 @@ import tinyevent;
             pNext                   : null,
             flags                   : 0,
             surface                 : cast(VkSurfaceKHR_handle*) vkSurface,
-            minImageCount           : capabilities.minImageCount,
+            minImageCount           : drawPayload.capabilities.minImageCount,
             imageFormat             : VK_FORMAT_B8G8R8A8_SRGB,
             imageColorSpace         : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-            imageExtent             : capabilities.currentExtent,
+            imageExtent             : drawPayload.capabilities.currentExtent,
             imageArrayLayers        : 1,
             imageUsage              : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
             VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
@@ -171,11 +273,11 @@ import tinyevent;
             compositeAlpha          : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
             presentMode             : VK_PRESENT_MODE_FIFO_KHR,
             clipped                 : VK_FALSE,
-            oldSwapchain            : swapchain
+            oldSwapchain            : cast(VkSwapchainKHR) drawPayload.swapchain
         };
 
-        uint[] queueFamilies = [Application.instance.backendContext.graphicsQueueIndex, presentQueueIndex];
-        if (Application.instance.backendContext.graphicsQueueIndex != presentQueueIndex) {
+        uint[] queueFamilies = [Application.instance.backendContext.graphicsQueueIndex, drawPayload.presentQueueIndex];
+        if (Application.instance.backendContext.graphicsQueueIndex != drawPayload.presentQueueIndex) {
             vkSwapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
             vkSwapchainCreateInfo.queueFamilyIndexCount = cast(uint) queueFamilies.length;
             vkSwapchainCreateInfo.pQueueFamilyIndices = queueFamilies.ptr;
@@ -188,75 +290,83 @@ import tinyevent;
         Application.instance.backendContext.device.vkSuccessOrDie!vkCreateSwapchainKHR(
             &vkSwapchainCreateInfo,
             null,
-            &swapchain
+            cast(VkSwapchainKHR*) &drawPayload.swapchain
         );
 
         vkGetSwapchainImagesKHR(
             Application.instance.backendContext.device,
-            swapchain,
-            &imageCount,
+            cast(VkSwapchainKHR) drawPayload.swapchain,
+            cast(uint*) &drawPayload.imageCount,
             null
         );
 
-        images = new VkImage[](imageCount);
+        drawPayload.images = new VkImage[](drawPayload.imageCount);
         vkGetSwapchainImagesKHR(
             Application.instance.backendContext.device,
-            swapchain,
-            &imageCount,
-            images.ptr
+            cast(VkSwapchainKHR) drawPayload.swapchain,
+            cast(uint*) &drawPayload.imageCount,
+            cast(VkImage*) drawPayload.images.ptr
         );
 
         VkCommandPoolCreateInfo commandPoolCreateInfo = {
             queueFamilyIndex: Application.instance.backendContext.graphicsQueueIndex
         };
 
-        Application.instance.backendContext.device.vkSuccessOrDie!vkCreateCommandPool(&commandPoolCreateInfo, null, &commandPool);
+        Application.instance.backendContext.device.vkSuccessOrDie!vkCreateCommandPool(&commandPoolCreateInfo, null, cast(VkCommandPool*) &drawPayload.commandPool);
 
         VkCommandBufferAllocateInfo allocateInfo = {
-            commandPool: commandPool,
-            commandBufferCount: imageCount
+            commandPool: cast(VkCommandPool) drawPayload.commandPool,
+            commandBufferCount: drawPayload.imageCount
         };
 
-        commandBuffers = new VkCommandBuffer[](imageCount);
-        Application.instance.backendContext.device.vkSuccessOrDie!vkAllocateCommandBuffers(&allocateInfo, commandBuffers.ptr);
-        Application.instance.backendContext.device.vkSuccessOrDie!vkResetCommandPool(commandPool, 0);
+        drawPayload.commandBuffers = new VkCommandBuffer[](drawPayload.imageCount);
+        Application.instance.backendContext.device.vkSuccessOrDie!vkAllocateCommandBuffers(&allocateInfo, cast(VkCommandBuffer*) drawPayload.commandBuffers.ptr);
+        Application.instance.backendContext.device.vkSuccessOrDie!vkResetCommandPool(cast(VkCommandPool) drawPayload.commandPool, 0);
 
-        destroy(drawSemaphores);
-        drawSemaphores = new VkSemaphore[](imageCount);
-
-        foreach (ref semaphore; drawSemaphores) {
-            const(VkSemaphoreCreateInfo) info = const VkSemaphoreCreateInfo();
-            Application.instance.backendContext.device.vkSuccessOrDie!vkCreateSemaphore(&info, null, &semaphore);
-        }
 
         uint width = min(
-        max(capabilities.currentExtent.width, capabilities.minImageExtent.width),
-        capabilities.maxImageExtent.width
+        max(drawPayload.capabilities.currentExtent.width, drawPayload.capabilities.minImageExtent.width),
+        drawPayload.capabilities.maxImageExtent.width
         );
 
         uint height = min(
-        max(capabilities.currentExtent.height, capabilities.minImageExtent.height),
-        capabilities.maxImageExtent.height
+        max(drawPayload.capabilities.currentExtent.height, drawPayload.capabilities.minImageExtent.height),
+        drawPayload.capabilities.maxImageExtent.height
         );
+
+        destroy(drawPayload.readySemaphores);
+        destroy(drawPayload.doneSemaphores);
+        destroy(drawPayload.fences);
+        drawPayload.readySemaphores = new VkSemaphore[](drawPayload.imageCount);
+        drawPayload.doneSemaphores = new VkSemaphore[](drawPayload.imageCount);
+        drawPayload.fences = new VkFence[](drawPayload.imageCount);
+
+        VkSemaphoreCreateInfo semaphoreInfo = {
+            sType: VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+        };
+
+        VkFenceCreateInfo fenceInfo = {
+            sType: VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            flags: VK_FENCE_CREATE_SIGNALED_BIT
+        };
 
         if (vkvgSurface)
             destroy(vkvgSurface);
 
         vkvgSurface = new super_.forms.drawing.Surface(
-            Application.instance.backendContext.vkvgDevice,
-            width,
-            height
+        Application.instance.backendContext.vkvgDevice,
+        width,
+        height
         );
         vkvgSurface.clear();
 
-        VkFenceCreateInfo fenceInfo = {
+        for (int imageIndex = 0; imageIndex < drawPayload.imageCount; imageIndex++) {
+            Application.instance.backendContext.device.vkSuccessOrDie!vkCreateSemaphore(&semaphoreInfo, null, cast(VkSemaphore*) &drawPayload.readySemaphores[imageIndex]);
+            Application.instance.backendContext.device.vkSuccessOrDie!vkCreateSemaphore(&semaphoreInfo, null, cast(VkSemaphore*) &drawPayload.doneSemaphores[imageIndex]);
+            Application.instance.backendContext.device.vkSuccessOrDie!vkCreateFence(&fenceInfo, null, cast(VkFence*) &drawPayload.fences[imageIndex]);
 
-        };
-        Application.instance.backendContext.device.vkSuccessOrDie!vkCreateFence(&fenceInfo, null, &drawFence);
-
-        for (int imageIndex = 0; imageIndex < imageCount; imageIndex++) {
-            VkImage image = images[imageIndex];
-            VkCommandBuffer commandBuffer = commandBuffers[imageIndex];
+            VkImage image = cast(VkImage) drawPayload.images[imageIndex];
+            VkCommandBuffer commandBuffer = cast(VkCommandBuffer) drawPayload.commandBuffers[imageIndex];
 
             VkCommandBufferBeginInfo beginInfo = {};
             commandBuffer.vkSuccessOrDie!vkBeginCommandBuffer(&beginInfo);
@@ -297,55 +407,6 @@ import tinyevent;
         }
 
         vkDeviceWaitIdle(Application.instance.backendContext.device);
-    }
-
-    /++
-     + Render the window content
-     +/
-    package(super_.forms) final void render() @trusted {
-        uint imageIndex;
-        if (!vkAcquireNextImageKHR(
-            Application.instance.backendContext.device,
-            swapchain,
-            ulong.max,
-            drawSemaphores[currentImage],
-            VK_NULL_HANDLE,
-            &imageIndex
-        )) {
-            import std.stdio;
-            createSwapchain();
-            return;
-        }
-
-        VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        VkSubmitInfo submit_info = {
-            sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            commandBufferCount: 1,
-            signalSemaphoreCount: 1,
-            pSignalSemaphores: &drawSemaphores[imageIndex],
-            waitSemaphoreCount: 0,
-            pWaitSemaphores: null,
-            pWaitDstStageMask: &dstStageMask,
-            pCommandBuffers: &commandBuffers[currentImage]
-        };
-
-        vkQueueSubmit(presentQueue, 1, &submit_info, drawFence);
-
-        VkPresentInfoKHR presentInfo = {
-            swapchainCount: 1,
-            pSwapchains: &swapchain,
-            waitSemaphoreCount: 1,
-            pWaitSemaphores: &drawSemaphores[imageIndex]
-        };
-
-        vkQueuePresentKHR(presentQueue, &presentInfo);
-
-        import std.stdio;
-        writeln("zzzzz");
-        super_.forms.drawing.Context ctx = new super_.forms.drawing.Context(vkvgSurface);
-        ctx.setSourceRgb(.1, .1, .1);
-        ctx.paint();
-        destroy(ctx);
     }
 
     /++

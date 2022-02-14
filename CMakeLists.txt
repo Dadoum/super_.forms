@@ -81,7 +81,7 @@ endif()
 if (has_vulkan)
     FetchContent_Declare(
             vkvg
-            GIT_REPOSITORY git@github.com:jpbruyere/vkvg.git
+            GIT_REPOSITORY git://github.com/jpbruyere/vkvg.git
             GIT_TAG v0.2.1
     )
     FetchContent_MakeAvailable(vkvg)
