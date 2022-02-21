@@ -23,7 +23,7 @@ int main() @safe {
                 "Hello World"
             ],
             new Button("").append!(Button.clicked)(() {
-                IdentifierE.widgetFromId("main_text").content = ["Clicked !"];
+                Widget.fromId!("main_text").content = ["Clicked !"];
             })
         ]
     ];

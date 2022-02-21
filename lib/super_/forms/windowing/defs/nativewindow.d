@@ -19,7 +19,7 @@ import tinyevent;
     void hide();
     void show();
 
-    shared(VkSurfaceKHR) vkSurface();
+    VkSurfaceKHR createVkSurface();
     /++
      + Determine if a queue family can be shown on the specified device.
      +/

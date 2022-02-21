@@ -19,7 +19,6 @@ import tinyevent;
         xcb_screen_t* screen;
         shared(X11Backend) backend;
         Event!() closedEvent;
-        shared(VkSurfaceKHR) vkSurfaceKHR;
 
         private xcb_connection_t* connection() @trusted {
             return cast(xcb_connection_t*) backend.connection;
@@ -92,18 +91,7 @@ import tinyevent;
                 [atom!"WM_DELETE_WINDOW"(backend.connection)]
             );
 
-            const(VkXcbSurfaceCreateInfoKHR) vkXcbSurfaceCreateInfo = {
-                window: windowHandle,
-                connection: connection,
-            };
-
             loadInstanceFuncs(Application.instance.backendContext.instance);
-            Application.instance.backendContext.instance.vkCreateXcbSurfaceKHR(
-                &vkXcbSurfaceCreateInfo,
-                null,
-                cast(VkSurfaceKHR*) &vkSurfaceKHR
-            );
-
             backend.nativeWindowToDObject[windowHandle] = this;
         }
     }
@@ -168,7 +156,18 @@ import tinyevent;
         ) == VK_TRUE;
     }
 
-    shared(VkSurfaceKHR) vkSurface() {
+    VkSurfaceKHR createVkSurface() @trusted {
+        const(VkXcbSurfaceCreateInfoKHR) vkXcbSurfaceCreateInfo = {
+            window: windowHandle,
+            connection: connection,
+        };
+        0
+        VkSurfaceKHR vkSurfaceKHR;
+        Application.instance.backendContext.instance.vkCreateXcbSurfaceKHR(
+            &vkXcbSurfaceCreateInfo,
+            null,
+            cast(VkSurfaceKHR*) &vkSurfaceKHR
+        );
         return vkSurfaceKHR;
     }
 }

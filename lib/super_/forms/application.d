@@ -182,6 +182,8 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
             Application.instance.backendContext.device,
             Application.instance.backendContext.graphicsQueueIndex,
             0,
+            VK_SAMPLE_COUNT_8_BIT,
+            false,
         );
 
         this.identifier = identifier;

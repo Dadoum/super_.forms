@@ -16,8 +16,8 @@ package(super_.forms) shared struct DrawPayload {
     VkImage[] images;
 
     VkFence[] fences;
-    VkSemaphore[] readySemaphores;
-    VkSemaphore[] doneSemaphores;
+    VkSemaphore graphicsSemaphore;
+    VkSemaphore presentationSemaphore;
 
     VkQueue presentQueue;
     uint presentQueueIndex;
@@ -86,29 +86,40 @@ package(super_.forms) shared struct DrawPayload {
     package(super_.forms) shared(DrawPayload) drawPayload;
 
     private super_.forms.drawing.Surface vkvgSurface;
+    private VkSurfaceKHR vkSurface;
 
     ~this() @trusted {
-        if (vkvgSurface)
-            destroy(vkvgSurface);
-
         if (drawPayload.renderLoop != ulong.max)
             Application.instance.unregisterLoop(drawPayload.renderLoop);
 
         nativeWindow.hide();
 
-        for (int i = 0; i < drawPayload.imageCount; i++) {
-            Application.instance.backendContext.device.vkDestroySemaphore(cast(VkSemaphore) drawPayload.readySemaphores[i], null);
-            Application.instance.backendContext.device.vkDestroySemaphore(cast(VkSemaphore) drawPayload.doneSemaphores[i], null);
-            Application.instance.backendContext.device.vkDestroyFence(cast(VkFence) drawPayload.fences[i], null);
-        }
+        destroySwapchain();
+
+        Application.instance.backendContext.device.vkDestroySemaphore(cast(VkSemaphore) drawPayload.graphicsSemaphore, null);
+        Application.instance.backendContext.device.vkDestroySemaphore(cast(VkSemaphore) drawPayload.presentationSemaphore, null);
 
         Application.instance.backendContext.device.vkDestroyCommandPool(cast(VkCommandPool) drawPayload.commandPool, null);
-        Application.instance.backendContext.device.vkDestroySwapchainKHR(cast(VkSwapchainKHR) drawPayload.swapchain, null);
+
+        Application.instance.backendContext.instance.vkDestroySurfaceKHR(vkSurface, null);
+
         destroy(nativeWindow);
+    }
+
+    private void destroySwapchain() @trusted {
+        destroy(vkvgSurface);
+
+        Application.instance.backendContext.device.vkFreeCommandBuffers(
+        cast(VkCommandPool_handle*) drawPayload.commandPool,
+        cast(uint) drawPayload.commandBuffers.length,
+        cast(VkCommandBuffer*) drawPayload.commandBuffers.ptr
+        );
+        Application.instance.backendContext.device.vkDestroySwapchainKHR(cast(VkSwapchainKHR) drawPayload.swapchain, null);
     }
 
     this() @trusted {
         nativeWindow = Application.instance.backend.createWindow(this);
+        this.vkSurface = nativeWindow.createVkSurface();
         this.size(800, 600);
 
         uint queueCount;
@@ -144,13 +155,19 @@ package(super_.forms) shared struct DrawPayload {
 
         drawPayload.renderLoop = Application.instance.registerLoop(() shared {
             with (drawPayload) {
+                super_.forms.drawing.Context ctx = new super_.forms.drawing.Context(vkvgSurface);
+                ctx.setSourceRgb(0, 1, 0);
+                ctx.paint();
+                destroy(ctx);
+
+                Application.instance.backendContext.device.vkDeviceWaitIdle();
                 Application.instance.backendContext.device.vkWaitForFences(1, cast(VkFence*) &fences[currentImage], VK_TRUE, ulong.max);
 
                 uint imageIndex;
                 VkResult result = Application.instance.backendContext.device.vkAcquireNextImageKHR(
                     cast(VkSwapchainKHR) swapchain,
                     ulong.max,
-                    cast(VkSemaphore) readySemaphores[currentImage],
+                    cast(VkSemaphore) presentationSemaphore,
                     VK_NULL_HANDLE,
                     &imageIndex
                 );
@@ -172,15 +189,10 @@ package(super_.forms) shared struct DrawPayload {
                 drawPayload.capabilities.maxImageExtent.height
                 );
 
-                super_.forms.drawing.Context ctx = new super_.forms.drawing.Context(vkvgSurface);
-                ctx.setSourceRgb(0, 50, 0);
-                ctx.paint();
-                destroy(ctx);
-
                 VkSubmitInfo submitInfo;
                 submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-                VkSemaphore[] waitSemaphores = [cast(VkSemaphore) readySemaphores[currentImage]];
+                VkSemaphore[] waitSemaphores = [cast(VkSemaphore) presentationSemaphore];
                 VkPipelineStageFlags[] waitStages = [VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT];
                 submitInfo.waitSemaphoreCount = 1;
                 submitInfo.pWaitSemaphores = waitSemaphores.ptr;
@@ -188,7 +200,7 @@ package(super_.forms) shared struct DrawPayload {
                 submitInfo.commandBufferCount = 1;
                 submitInfo.pCommandBuffers = cast(VkCommandBuffer*) &commandBuffers[imageIndex];
 
-                VkSemaphore[] signalSemaphores = [cast(VkSemaphore) doneSemaphores[currentImage]];
+                VkSemaphore[] signalSemaphores = [cast(VkSemaphore) graphicsSemaphore];
                 submitInfo.signalSemaphoreCount = 1;
                 submitInfo.pSignalSemaphores = signalSemaphores.ptr;
 
@@ -226,6 +238,10 @@ package(super_.forms) shared struct DrawPayload {
     }
 
     private void createSwapchain() @trusted {
+        if (drawPayload.swapchain != null) {
+
+        }
+
         Application.instance.backendContext.physicalDevice.vkSuccessOrDie!vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
         cast(VkSurfaceKHR) vkSurface,
         cast(VkSurfaceCapabilitiesKHR*) &drawPayload.capabilities
@@ -334,11 +350,7 @@ package(super_.forms) shared struct DrawPayload {
         drawPayload.capabilities.maxImageExtent.height
         );
 
-        destroy(drawPayload.readySemaphores);
-        destroy(drawPayload.doneSemaphores);
         destroy(drawPayload.fences);
-        drawPayload.readySemaphores = new VkSemaphore[](drawPayload.imageCount);
-        drawPayload.doneSemaphores = new VkSemaphore[](drawPayload.imageCount);
         drawPayload.fences = new VkFence[](drawPayload.imageCount);
 
         VkSemaphoreCreateInfo semaphoreInfo = {
@@ -360,9 +372,10 @@ package(super_.forms) shared struct DrawPayload {
         );
         vkvgSurface.clear();
 
+        Application.instance.backendContext.device.vkSuccessOrDie!vkCreateSemaphore(&semaphoreInfo, null, cast(VkSemaphore*) &drawPayload.graphicsSemaphore);
+        Application.instance.backendContext.device.vkSuccessOrDie!vkCreateSemaphore(&semaphoreInfo, null, cast(VkSemaphore*) &drawPayload.presentationSemaphore);
+
         for (int imageIndex = 0; imageIndex < drawPayload.imageCount; imageIndex++) {
-            Application.instance.backendContext.device.vkSuccessOrDie!vkCreateSemaphore(&semaphoreInfo, null, cast(VkSemaphore*) &drawPayload.readySemaphores[imageIndex]);
-            Application.instance.backendContext.device.vkSuccessOrDie!vkCreateSemaphore(&semaphoreInfo, null, cast(VkSemaphore*) &drawPayload.doneSemaphores[imageIndex]);
             Application.instance.backendContext.device.vkSuccessOrDie!vkCreateFence(&fenceInfo, null, cast(VkFence*) &drawPayload.fences[imageIndex]);
 
             VkImage image = cast(VkImage) drawPayload.images[imageIndex];
@@ -421,13 +434,6 @@ package(super_.forms) shared struct DrawPayload {
      +/
     void show() {
         nativeWindow.show();
-    }
-
-    /++
-     + Get VkSurfaceKHR for the window.
-     +/
-    private shared(VkSurfaceKHR) vkSurface() {
-        return nativeWindow.vkSurface;
     }
 }
 

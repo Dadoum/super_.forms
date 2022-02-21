@@ -16,6 +16,11 @@ class Device/+(bool hardwareAccelerated)+/ {
         owned = true;
     }
 
+    this(VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint qFamIdx, uint qIndex, VkSampleCountFlags samples, bool deferredResolve) {
+        handle = vkvg_device_create_from_vk_multisample(inst, phy, vkdev, qFamIdx, qIndex, samples, deferredResolve);
+        owned = true;
+    }
+
     ~this() {
         if (owned) {
             vkvg_device_destroy(handle);
