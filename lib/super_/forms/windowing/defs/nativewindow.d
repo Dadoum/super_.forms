@@ -1,6 +1,5 @@
 module super_.forms.windowing.defs.nativewindow;
 
-import erupted;
 import std.typecons;
 import tinyevent;
 
@@ -8,20 +7,14 @@ import tinyevent;
     @property string title();
     @property void title(string val);
 
-    @property Tuple!(uint, uint) size();
-    @property void size(uint width, uint height);
+    void size(out uint width, out uint height);
+    void size(uint width, uint height);
 
-    @property Tuple!(int, int) position();
-    @property void position(int x, int y);
+    void position(out int x, out int y);
+    void position(int x, int y);
 
     @property ref shared(Event!()) closed();
 
     void hide();
     void show();
-
-    VkSurfaceKHR createVkSurface();
-    /++
-     + Determine if a queue family can be shown on the specified device.
-     +/
-    bool canPresent(VkPhysicalDevice physicalDevice, int index);
 }

@@ -1,11 +1,25 @@
 module super_.forms.windowing.platforms.wayland.wlbackend;
 
-//version(Wayland):
-//import super_.forms;
-//
-//class WlBackend: Backend {
-//
-//}
+version(Wayland):
+import super_.forms.renderer.renderer;
+import super_.forms.application;
+import super_.forms.widgets: SFWindow = Window;
+import super_.forms.windowing.defs;
+import super_.forms.utils;
+
+shared synchronized class WlBackend: Backend {
+    public shared(NativeWindow) createWindow(SFWindow win) shared @safe {
+        throw new NotImplementedException();
+    }
+
+    public void waitForEvents() @trusted {
+        throw new NotImplementedException();
+    }
+
+    RendererBuilderFunc[] rendererBuilders() shared @safe {
+        return this.rendererConstructorsFromBackendType();
+    }
+}
 //
 //class WlBackendBuilder: BackendBuilder {
 //    ushort evaluateEnvironment() {
@@ -28,7 +42,6 @@ module super_.forms.windowing.platforms.wayland.wlbackend;
 //}
 
 //public import wayland.native.client;
-//import erupted.platform_extensions;
 //
 //alias wl_surface = wl_proxy;
 //

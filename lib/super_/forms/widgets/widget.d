@@ -1,12 +1,13 @@
 module super_.forms.widgets.widget;
 
 import std.traits;
-import super_.forms;
+import super_.forms.application;
+import super_.forms.widgets;
 
 /++
  + Base class of all widgets, implements chain setters and core widget logic.
  +/
-@safe synchronized abstract class Widget {
+@safe abstract class Widget {
     this() {}
 
     /++
@@ -32,7 +33,7 @@ R identify(string name, R: Widget)(R widget) {
 
 /++ Allow to set a property and still be able to set another value right after. +/
 @safe W set(alias U, W: Widget, Args...)(W instance, auto ref Args args) if(isParent!(U, W)) {
-    __traits(child, instance, U) = args;
+    __traits(child, instance, U)(args);
     return instance;
 }
 

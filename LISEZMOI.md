@@ -3,20 +3,23 @@
     <a href="README.md">English</a> | Français
 </center>
 
-L'ultime bibliothèque de fenêtre.
+L'ultime bibliothèque de contrôles graphiques.
 
-## Relation avec beamui:
+## Pourquoi encore une énième bibliothèque de contrôles ?
 
 Il fallait pour moi une bibliothèque pouvant placer des contrôles dans des conteneurs
 clairs et faciles à utiliser. J'adorais GTK pour sa simplicité, mais l'API
 instable et les fonctions manquantes ont fini par me donner envie d'autre chose.
 
 Cette bibliothèque se veut à la fois plus rapide que GTK, mais aussi 
-plus complet et plus simple.
+plus complet et plus simple. 
+
+super_.forms supporte le rendu logiciel, OpenGL et Vulkan, sans changement pour l'appli.
+De plus, l'architecture est modulaire et permet de charger des modules à la volée pour fonctionner sur plus de systèmes.
 
 ## Feuille de route
 
- - [ ] Widget
+ - [ ] Contrôles sur fenêtre
  - [ ] Déclaratif
  - [ ] Traduction à l'aide des versions (sans activation, il y a la base en anglais, sinon -version=français rajoute les symboles français)
  - [ ] Wayland
@@ -24,8 +27,6 @@ plus complet et plus simple.
 
 ## Problèmes connus:
 
- - Le support de X11 ne fonctionne qu'avec GDC, pour une raison inconnue les fonctions chargent mal sinon
-   (fichier en cause: vkxcb.d)
  - 
 
 ## Exemple de code qui devrait fonctionner:
@@ -39,20 +40,18 @@ int main() {
     
     Application app = new Application("com.dadoum.example");
     Fenetre w = new Fenetre("Exemple").def!(Fenetre.dimensions)(Dimensions(400, 800)).def!(Fenetre.redimensionable)(false) [
-        new Pile [
-            new Colonne [
-                new Texte [
+        new Pile() [
+            new Colonne() [
+                new Paragraphe() [
                     "Utilisez ", Hyperlien("https://github.com/Dadoum/super_forms", "super_.forms"), " !"
                 ],
                 new Bouton("Cliquez ici !").identifier!"btnCliquezIci"()
             ],
-            new Absolu [
-                new Panneau 
+            new Absolu() [
+                new Texte("T'as cliqué !")
                     .def!(ContenuAbsoluE.position) (Point(0, 800))
                     .def!(Controle.visible)        (false)
-                    .identifier!"absoluAnimé"() [
-                    new Texte("T'as cliqué !")
-                ]
+                    .identifier!"absoluAnimé"()
             ]
         ]
     ];

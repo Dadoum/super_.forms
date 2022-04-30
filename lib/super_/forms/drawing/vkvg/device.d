@@ -1,7 +1,7 @@
-module super_.forms.drawing.device;
+module super_.forms.drawing.vkvg.device;
 
 import erupted;
-import super_.forms.drawing;
+import super_.forms.drawing.vkvg;
 
 class Device/+(bool hardwareAccelerated)+/ {
     //static if (hardwareAccelerated) {

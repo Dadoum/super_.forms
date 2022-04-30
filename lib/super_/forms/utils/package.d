@@ -1,17 +1,11 @@
 module super_.forms.utils;
 
-import erupted.functions;
-import erupted.vulkan_lib_loader;
+public import super_.forms.utils.libraryloader;
+
+import std.format;
 import std.traits;
 
 @safe:
-
-class VulkanException(alias U): Exception {
-    this(VkResult result = cast(VkResult) null, string file = __FILE__, size_t line = __LINE__) @trusted {
-        import std.format;
-        super(format!"A fail occurred while calling \"%s\""(U.stringof) ~ (result == cast(VkResult) null ? "" : format!" (code %d)"(result)), file, line);
-    }
-}
 
 class DuplicateAppException: Exception {
     this(string file = __FILE__, size_t line = __LINE__) {
@@ -21,7 +15,7 @@ class DuplicateAppException: Exception {
 
 class NotImplementedException: Exception {
     this(string file = __FILE__, size_t line = __LINE__) {
-        super("This feature has not been implemented yet. ", file, line);
+        super(format!"The function at %s:%d has not been implemented yet. "(file, line), file, line);
     }
 }
 
@@ -31,15 +25,13 @@ class NoBackendAvailableException: Exception {
     }
 }
 
-void vkSuccessOrDie(alias U)(auto ref Parameters!U args) @trusted {
-    auto result = U(args);
-    if (result != VK_SUCCESS) {
-        throw new VulkanException!U(result);
+class RendererException: Exception {
+    this(string message, string file = __FILE__, size_t line = __LINE__) {
+        super(message, file, line);
     }
 }
 
-shared static this() @system {
-    if (!loadGlobalLevelFunctions()) {
-        throw new VulkanException!loadGlobalLevelFunctions();
-    }
+bool isOfType(T, U)(U obj) @trusted {
+    pragma(inline, true);
+    return (cast(Object) obj).classinfo == T.classinfo;
 }

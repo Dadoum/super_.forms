@@ -2,10 +2,11 @@ module super_.forms.windowing.defs.backend;
 
 @safe:
 
-import erupted;
 import std.algorithm;
+import std.traits;
+import super_.forms.renderer.renderer;
 import super_.forms.widgets;
-import super_.forms.windowing;
+import super_.forms.windowing.defs;
 import super_.forms.utils;
 
 package(super_.forms) ushort[BackendBuilder] backendScores;
@@ -23,9 +24,19 @@ shared synchronized interface Backend {
      +/
     void waitForEvents();
     /++
-     + VkExtension required for backend.
+     + Give functions that can build a renderer adapted to the current Backend.
      +/
-    string[] requiredExtensions();
+    RendererBuilderFunc[] rendererBuilders();
+
+    package(super_.forms.windowing) RendererBuilderFunc[] rendererConstructorsFromBackendType(this R)() @trusted { // FIXME why trusted here ?
+        RendererBuilderFunc[] ret = [];
+        static foreach (Type; InterfacesTuple!R) {
+            static if (is(Type == BackendCompatibleWith!U, U)) {
+                ret ~= Renderer.registerRenderer!U.bFunc;
+            }
+        }
+        return ret;
+    }
 }
 
 /++
@@ -51,7 +62,7 @@ interface BackendBuilder {
 
         auto maxElement = backendScores.byKeyValue.maxElement!(x => x.value);
         if (maxElement.value == 0) {
-            throw new NoBackendAvailableException("No available backend can be loaded on your setup. ");
+            throw new NoBackendAvailableException("No backend can be loaded on your setup. ");
         }
 
         return maxElement.key.buildBackend();

@@ -3,7 +3,7 @@
     English | <a href="LISEZMOI.md">Français</a>
 </center>
 
-The ultimate windowing library.
+The ultimate GUI library.
 
 ## Why another GUI library?
 
@@ -18,29 +18,27 @@ and have a stable API to build upon with newer technologies.
 - [ ] Wayland support
 - [ ] WebKit view
 - 
-## Problèmes connus:
+## Known issues:
 
-- X11 support is working only with GDC, for unknown reason.
-  (problematic file: vkxcb.d)
--
+- 
 
 ## Code sample that I will try to make it work:
 
 ```d
 int main() {
     import super_.forms;
-    import std.duration: dur;
+    import std.datetime: dur;
     
     Application app = new Application("com.dadoum.example");
     Window w = new Window("Exemple").set!(Window.size)(Size(400, 800)).set!(Window.resizeable)(false) [
-        new Stack [
-            new Column [
-                new Paragraph [
+        new Stack() [
+            new Column() [
+                new Paragraph() [
                     "Use ", Link("https://github.com/Dadoum/super_forms", "super_.forms"), " !"
                 ],
                 new Button("click here !").identify!("btnClickHere")
             ],
-            new Fixed [
+            new Fixed() [
                 new Panel 
                     .set!(FixedChildE.position) (Point(0, 800))
                     .set!(Widget.visible)       (false)
@@ -51,7 +49,7 @@ int main() {
         ]
     ];
     
-    auto btn = cast(Buttton) Widget.fromId!"btnClickHere";
+    auto btn = cast(Button) Widget.fromId!"btnClickHere";
     auto fixed = cast(Fixed) Widget.fromId!"fixedAnimated";
     
     auto anim = new Animation(

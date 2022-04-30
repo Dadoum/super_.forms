@@ -1,4 +1,4 @@
-module super_.forms.drawing.types;
+module super_.forms.drawing.vkvg.types;
 
 import core.stdc.stdint;
 

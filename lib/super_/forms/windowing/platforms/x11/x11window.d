@@ -3,7 +3,6 @@ module super_.forms.windowing.platforms.x11.x11window;
 version(X11):
 
 import xcb.xcb;
-import erupted;
 import super_.forms.application;
 import super_.forms.windowing.platforms.x11.utils;
 import super_.forms.windowing.defs;
@@ -91,7 +90,6 @@ import tinyevent;
                 [atom!"WM_DELETE_WINDOW"(backend.connection)]
             );
 
-            loadInstanceFuncs(Application.instance.backendContext.instance);
             backend.nativeWindowToDObject[windowHandle] = this;
         }
     }
@@ -111,9 +109,10 @@ import tinyevent;
         xcb_flush(connection);
     }
 
-    @property Tuple!(uint, uint) size() @trusted {
+    @property void size(out uint width, out uint height) @trusted {
         auto reply = handleReplyError!xcb_get_geometry_reply(connection, xcb_get_geometry(connection, windowHandle));
-        return tuple(cast(uint) reply.width, cast(uint) reply.height);
+        width = cast(uint) reply.width;
+        height = cast(uint) reply.height;
     }
 
     @property void size(uint width, uint height) @trusted {
@@ -121,9 +120,10 @@ import tinyevent;
         xcb_configure_window (connection, windowHandle, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, array.ptr);
     }
 
-    @property Tuple!(int, int) position() @trusted {
+    @property void position(out int x, out int y) @trusted {
         auto reply = handleReplyError!xcb_get_geometry_reply(connection, xcb_get_geometry(connection, windowHandle));
-        return tuple(cast(int) reply.x, cast(int) reply.y);
+        x = cast(uint) reply.x;
+        y = cast(uint) reply.y;
     }
 
     @property void position(int x, int y) @trusted {
@@ -146,28 +146,5 @@ import tinyevent;
 
     void show() @trusted {
         xcb_map_window(connection, windowHandle);
-    }
-
-    bool canPresent(VkPhysicalDevice physicalDevice, int index) @trusted {
-        return physicalDevice.vkGetPhysicalDeviceXcbPresentationSupportKHR(
-            index,
-            connection,
-            screen.root_visual
-        ) == VK_TRUE;
-    }
-
-    VkSurfaceKHR createVkSurface() @trusted {
-        const(VkXcbSurfaceCreateInfoKHR) vkXcbSurfaceCreateInfo = {
-            window: windowHandle,
-            connection: connection,
-        };
-        0
-        VkSurfaceKHR vkSurfaceKHR;
-        Application.instance.backendContext.instance.vkCreateXcbSurfaceKHR(
-            &vkXcbSurfaceCreateInfo,
-            null,
-            cast(VkSurfaceKHR*) &vkSurfaceKHR
-        );
-        return vkSurfaceKHR;
     }
 }

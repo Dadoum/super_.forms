@@ -1,7 +1,7 @@
-module super_.forms.drawing.surface;
+module super_.forms.drawing.vkvg.surface;
 
 import erupted;
-import super_.forms.drawing;
+import super_.forms.drawing.vkvg;
 
 class Surface/+(bool hardwareAccelerated)+/ {
     //static if (hardwareAccelerated) {

@@ -2,17 +2,19 @@ module super_.forms.application;
 
 import core.runtime: Runtime;
 import ddbus;
-import erupted.functions;
-import erupted.vulkan_lib_loader;
 import std.algorithm;
 import std.array;
 import std.concurrency;
 import std.datetime;
+import std.meta;
 import std.stdio;
 import std.string;
 import std.traits;
-import super_.forms;
 import super_.forms.drawing;
+import super_.forms.renderer.renderer;
+import super_.forms.themeengine;
+import super_.forms.utils;
+import super_.forms.windowing.defs;
 import tinyevent;
 
 enum ApplicationFlags {
@@ -20,29 +22,10 @@ enum ApplicationFlags {
     unique = 1 << 0
 }
 
-struct VkContext {
-    VkInstance                        instance;
-    VkPhysicalDevice                  physicalDevice;
-    VkDevice                          device;
-    VkQueue                           queue;
-    uint                              graphicsQueueIndex;
-    uint                              extensions = 0;
-    uint                              features;
-    const(VkPhysicalDeviceFeatures)*  deviceFeatures = null;
-    const(VkPhysicalDeviceFeatures2)* deviceFeatures2 = null;
-    VkSurfaceFormatKHR                format;
-
-    // VkVg types
-    super_.forms.drawing.Device                       vkvgDevice;
-}
-
-public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
-
 /++
  + An application is what manages window and coordinate rendering and events.
  +/
 @safe private shared class ApplicationPriv {
-    private immutable(string) identifier;
     private const(ApplicationFlags) flags;
     private __gshared Connection conn;
     private shared(bool[]) idRunning = [];
@@ -54,18 +37,15 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
     private Event!(string[]) startedEvent;
     private Event!(string[]) activatedEvent;
 
+    package(super_.forms) immutable Renderer renderer;
+    package(super_.forms) immutable(string) identifier;
     package(super_.forms) shared(Backend) backend;
-    package(super_.forms) __gshared VkContext backendContext = VkContext();
+    package(super_.forms) shared(ThemeEngine) themeEngine;
 
     static shared(Application) instance;
 
-    @property ref shared(Event!(string[])) started() {
-        return startedEvent;
-    }
-
-    @property ref shared(Event!(string[])) activated() {
-        return activatedEvent;
-    }
+    @property ref shared(Event!(string[])) started() { return startedEvent; }
+    @property ref shared(Event!(string[])) activated() { return activatedEvent; }
 
     this(string identifier, ApplicationFlags flags = ApplicationFlags.none) shared @trusted {
         if (instance !is null) {
@@ -73,6 +53,53 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
         } else {
             instance = this;
         }
+        this.identifier = identifier;
+        this.flags = flags;
+
+        this.backend = BackendBuilder.buildBestBackend();
+        import super_.forms.windowing.platforms.wayland.wlbackend;
+
+        //this.themeEngine = ThemeEngine.buildThemeEngine(backend);
+
+        Renderer currentRenderer;
+        foreach(builderFunc; backend.rendererBuilders()) {
+            if (!currentRenderer) {
+                currentRenderer = cast(Renderer) builderFunc(backend);
+                break;
+            }
+        }
+
+        if (!currentRenderer) {
+            throw new RendererException("No renderer is available on this device. ");
+        }
+
+        this.renderer =  cast(immutable Renderer) currentRenderer;
+    }
+
+    ~this() @trusted {
+        instance = null;
+    }
+
+    package(super_.forms) ulong registerLoop(shared(void delegate() shared) del) @trusted {
+        import core.atomic;
+        shared(ulong) id = idRunning.length;
+        idRunning ~= true;
+        spawn(() shared {
+            while (!launched) { }
+            while (idRunning[id]) {
+                del();
+            }
+        });
+        return id;
+    }
+
+    package(super_.forms) void unregisterLoop(ulong id) {
+        idRunning[id] = false;
+    }
+
+    int run() @trusted {
+        import core.thread.osthread;
+        import std.concurrency;
 
         conn = connectToBus();
         string[] args = Runtime.args;
@@ -98,129 +125,6 @@ public enum vulkanApiVersion = VK_MAKE_API_VERSION(1, 0, 3, 0);
             destroy(path);
         }
 
-        destroy(args);
-
-        VkApplicationInfo appInfo = {
-            pApplicationName: identifier.toStringz,
-            apiVersion: vulkanApiVersion,
-        };
-
-        this.backend = BackendBuilder.buildBestBackend();
-        immutable(char)*[] exts
-            = [VK_KHR_SURFACE_EXTENSION_NAME.toStringz] ~ backend.requiredExtensions.map!((ext) => ext.toStringz).array;
-
-        exts ~= "VK_EXT_debug_utils".toStringz;
-
-        VkInstanceCreateInfo instInfo = {
-            pApplicationInfo		: &appInfo,
-            enabledExtensionCount	: cast(uint) exts.length,
-            ppEnabledExtensionNames	: exts.ptr,
-        };
-
-        vkSuccessOrDie!vkCreateInstance(&instInfo, null, &backendContext.instance);
-        loadInstanceLevelFunctions(backendContext.instance);
-
-        uint numPhysDevices;
-        backendContext.instance.vkSuccessOrDie!vkEnumeratePhysicalDevices(&numPhysDevices, null);
-
-        VkPhysicalDevice[] physDevices = new VkPhysicalDevice[](numPhysDevices);
-        backendContext.instance.vkSuccessOrDie!vkEnumeratePhysicalDevices(&numPhysDevices, physDevices.ptr);
-
-        // TODO: make setting selection screen for GPU
-        backendContext.physicalDevice = physDevices[0];
-
-        uint32_t numQueues;
-        vkGetPhysicalDeviceQueueFamilyProperties(backendContext.physicalDevice, &numQueues, null);
-        assert(numQueues >= 1);
-
-        auto queueFamilyProperties = new VkQueueFamilyProperties[](numQueues);
-        vkGetPhysicalDeviceQueueFamilyProperties
-            (backendContext.physicalDevice, &numQueues, queueFamilyProperties.ptr);
-        assert(numQueues >= 1);
-
-        backendContext.graphicsQueueIndex = uint.max;
-        foreach(i, const ref properties; queueFamilyProperties) {
-            if (properties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                if (backendContext.graphicsQueueIndex == uint.max) {
-                    backendContext.graphicsQueueIndex = cast(uint) i;
-                }
-            }
-        }
-
-        if (backendContext.graphicsQueueIndex == uint.max)  {
-            backendContext.graphicsQueueIndex = 0;
-        }
-
-        const(float[1]) queuePriorities = [ 1.0f ];
-        VkDeviceQueueCreateInfo queueCreateInfo = {
-            queueCount			: 1,
-            pQueuePriorities 	: queuePriorities.ptr,
-            queueFamilyIndex	: backendContext.graphicsQueueIndex,
-        };
-
-        auto deviceExtensions = [VK_KHR_SWAPCHAIN_EXTENSION_NAME.toStringz];
-
-        // prepare logical device creation
-        VkDeviceCreateInfo deviceCreateInfo = {
-            queueCreateInfoCount	: 1,
-            pQueueCreateInfos		: &queueCreateInfo,
-            enabledExtensionCount   : cast(uint) deviceExtensions.length,
-            ppEnabledExtensionNames : deviceExtensions.ptr,
-        };
-
-        vkCreateDevice(physDevices[0], &deviceCreateInfo, null, &backendContext.device);
-        loadDeviceLevelFunctions(backendContext.device);
-
-        backendContext.device.vkGetDeviceQueue(backendContext.graphicsQueueIndex, 0, &backendContext.queue);
-
-        backendContext.format.format = VK_FORMAT_B8G8R8A8_SRGB;
-        backendContext.format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-
-        backendContext.vkvgDevice = new super_.forms.drawing.Device(
-            Application.instance.backendContext.instance,
-            Application.instance.backendContext.physicalDevice,
-            Application.instance.backendContext.device,
-            Application.instance.backendContext.graphicsQueueIndex,
-            0,
-            VK_SAMPLE_COUNT_8_BIT,
-            false,
-        );
-
-        this.identifier = identifier;
-        this.flags = flags;
-    }
-
-    ~this() @trusted {
-        vkDeviceWaitIdle(backendContext.device);
-
-        vkDestroyDevice(backendContext.device, null);
-        vkDestroyInstance(backendContext.instance, null);
-        freeVulkanLib();
-        instance = null;
-    }
-
-    package(super_.forms) ulong registerLoop(shared(void delegate() shared) del) @trusted {
-        import core.atomic;
-        shared(ulong) id = idRunning.length;
-        idRunning ~= true;
-        spawn(() shared {
-            while (!launched) { }
-            while (idRunning[id]) {
-                del();
-            }
-        });
-        return id;
-    }
-
-    package(super_.forms) void unregisterLoop(ulong id) {
-        idRunning[id] = false;
-    }
-
-    int run() @trusted {
-        import core.thread.osthread;
-        import std.concurrency;
-
-        string[] args = Runtime.args;
         started.emit(args);
         destroy(args);
 

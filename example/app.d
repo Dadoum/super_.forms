@@ -1,33 +1,46 @@
 module app;
 
-import std.stdio;
-import std.conv;
-import super_.forms;
+int main() {
+    import super_.forms;
+    import std.datetime: dur;
 
-int main() @safe {
-    // create application. "unique" prevents multiple instance of the app running at the same time
-    auto app = new Application("com.dadoum.example_super_forms", ApplicationFlags.unique);
-
-    // create window, set title and children
-    auto window =
-        new Window()
-            .set!(Window.title)("super_.forms example")
-            .append!(Window.closed)(() => app.exit);
-
-    window.show();
-
-    /+
-    auto window = new Window("super_.forms example") [
-        new Row [
-            new Text.set(IdentifierE.id)("main_text") [
-                "Hello World"
+    Application app = new Application("com.dadoum.example");
+    Window w = new Window("Example").set!(Window.size)(400, 800) /+.set!(Window.resizeable)(false) +/ [
+        new Stack() [
+            new Column() [
+                new Paragraph() [
+                    "Use ", new Link("https://github.com/Dadoum/super_forms", "super_.forms"), " !"
+                ],
+                new Button("click here !").identify!("btnClickHere")
             ],
-            new Button("").append!(Button.clicked)(() {
-                Widget.fromId!("main_text").content = ["Clicked !"];
-            })
+            new Fixed() [
+                new Filter()
+                //  .set!(FixedChildE.position) (Point(0, 800))
+                //  .set!(Widget.visible)       (false)
+                    .identify!("fixedAnimated") [
+                    new Text("You clicked !")
+                ]
+            ]
         ]
     ];
-    +/
 
-    return app.run();
+    auto btn = cast(Button) Widget.fromId!("btnClickHere");
+    auto fixed = cast(Fixed) Widget.fromId!("fixedAnimated");
+    w.show();
+
+    //auto anim = new Animation(
+    //    (x) {
+    //        auto eased = easeOut(x);
+    //        FixedChildE.get(fixed).x = eased;
+    //    },
+    //    dur!"msecs"(500)
+    //);
+    //
+    //btn.clicked ~= () {
+    //    fixed.visible = true;
+    //    if (!anim.running)
+    //        anim.start;
+    //};
+
+    return app.run;
 }

@@ -5,14 +5,16 @@ version(X11):
 import xcb.xcb;
 import erupted;
 import std.string;
-import super_.forms.widgets: SFWindow = Window;
+import super_.forms.renderer.vulkan.vulkanrendercompatiblebackend;
+import super_.forms.renderer.renderer;
 import super_.forms.application;
+import super_.forms.widgets: SFWindow = Window;
 import super_.forms.windowing.defs;
 import super_.forms.windowing.platforms.x11;
 import super_.forms.windowing.platforms.x11.utils;
 import super_.forms.utils;
 
-@safe shared synchronized class X11Backend: Backend {
+@safe shared synchronized class X11Backend: Backend, VulkanRenderCompatibleBackend {
     package(super_.forms.windowing.platforms.x11) {
         immutable(xcb_connection_t*) connection;
         shared(X11Window)[xcb_window_t] nativeWindowToDObject;
@@ -49,8 +51,14 @@ import super_.forms.utils;
         }
     }
 
-    string[] requiredExtensions() @trusted {
-        return ["VK_KHR_xcb_surface"];
+    RendererBuilderFunc[] rendererBuilders() shared @safe {
+        return this.rendererConstructorsFromBackendType();
+    }
+
+    version (VulkanRender) {
+        public string[] requiredExtensions() @safe {
+            return ["VK_KHR_xcb_surface"];
+        }
     }
 }
 
