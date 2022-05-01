@@ -10,13 +10,13 @@ version (OpenGLRender) {
      + Provides drawing on devices not supporting Vulkan with Cairo.
      +/
     shared class OpenGLRenderer: Renderer {
-        static shared(OpenGLRenderer) build(shared Backend backend) {
+        static shared(Renderer) build(shared Backend backend) {
             return null;
         }
     }
 
     shared static this() {
-        Renderer.registerRenderer!OpenGLRenderer.register(&OpenGLRenderer.build);
+        Renderer.registerRenderer!(shared OpenGLRenderer).register(&OpenGLRenderer.build);
     }
 } else {
     import std.meta;

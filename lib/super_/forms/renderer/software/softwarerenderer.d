@@ -10,13 +10,13 @@ version (SoftwareRender) {
  + Provides drawing on devices not supporting any hardware acceleration with Cairo.
  +/
     shared class SoftwareRenderer: Renderer {
-        static shared(SoftwareRenderer) build(shared Backend backend) {
+        static shared(Renderer) build(shared Backend backend) {
             return null;
         }
     }
 
     shared static this() {
-        Renderer.registerRenderer!SoftwareRenderer.register(&SoftwareRenderer.build);
+        Renderer.registerRenderer!(shared SoftwareRenderer).register(&SoftwareRenderer.build);
     }
 } else {
     import std.meta;

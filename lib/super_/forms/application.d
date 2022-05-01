@@ -37,9 +37,9 @@ enum ApplicationFlags {
     private Event!(string[]) startedEvent;
     private Event!(string[]) activatedEvent;
 
-    package(super_.forms) immutable Renderer renderer;
     package(super_.forms) immutable(string) identifier;
     package(super_.forms) shared(Backend) backend;
+    package(super_.forms) shared(Renderer) renderer;
     package(super_.forms) shared(ThemeEngine) themeEngine;
 
     static shared(Application) instance;
@@ -57,23 +57,28 @@ enum ApplicationFlags {
         this.flags = flags;
 
         this.backend = BackendBuilder.buildBestBackend();
-        import super_.forms.windowing.platforms.wayland.wlbackend;
 
-        //this.themeEngine = ThemeEngine.buildThemeEngine(backend);
+        this.themeEngine = new SuperFormsThemeEngine();// ThemeEngine.buildThemeEngine(backend);
 
-        Renderer currentRenderer;
         foreach(builderFunc; backend.rendererBuilders()) {
-            if (!currentRenderer) {
-                currentRenderer = cast(Renderer) builderFunc(backend);
-                break;
+            this.renderer = builderFunc(backend);
+            if (renderer) {
+                goto success;
             }
         }
 
-        if (!currentRenderer) {
-            throw new RendererException("No renderer is available on this device. ");
-        }
+        throw new RendererException("No renderer is available on this device. ");
 
-        this.renderer =  cast(immutable Renderer) currentRenderer;
+      success:
+        debug {
+            import std.stdio;
+            writefln!"Application %s initialized with %s backend, %s renderer and %s theme engine. "(
+                identifier,
+                typeOf!backend,
+                typeOf!renderer,
+                typeOf!themeEngine,
+            );
+        }
     }
 
     ~this() @trusted {

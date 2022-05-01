@@ -19,6 +19,12 @@ class NotImplementedException: Exception {
     }
 }
 
+class InvalidIdentifierException: Exception {
+    this(string identifier, string file = __FILE__, size_t line = __LINE__) {
+        super(format!"No widget has been identified as \"%s\""(identifier), file, line);
+    }
+}
+
 class NoBackendAvailableException: Exception {
     this(string message, string file = __FILE__, size_t line = __LINE__) {
         super(message, file, line);
@@ -31,7 +37,12 @@ class RendererException: Exception {
     }
 }
 
+auto typeOf(alias U)() @trusted {
+    pragma(inline, true);
+    return typeid(cast(Object) U);
+}
+
 bool isOfType(T, U)(U obj) @trusted {
     pragma(inline, true);
-    return (cast(Object) obj).classinfo == T.classinfo;
+    return typeid(cast(Object) obj) is typeid(T);
 }

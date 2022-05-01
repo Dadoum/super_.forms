@@ -29,7 +29,7 @@ version (VulkanRender) {
 
         }
 
-        static shared(VulkanRenderer) build(shared Backend backend) {
+        static shared(Renderer) build(shared Backend backend) {
             if (auto vkBackend = cast(shared VulkanRenderCompatibleBackend) backend) {
                 if (!loadGlobalLevelFunctions) {
                     return null;
@@ -78,7 +78,7 @@ version (VulkanRender) {
     }
 
     shared static this() {
-        Renderer.registerRenderer!VulkanRenderer.register(&VulkanRenderer.build);
+        Renderer.registerRenderer!(shared VulkanRenderer).register(&VulkanRenderer.build);
     }
 } else {
     import std.meta;

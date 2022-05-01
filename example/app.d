@@ -3,9 +3,10 @@ module app;
 int main() {
     import super_.forms;
     import std.datetime: dur;
-
     Application app = new Application("com.dadoum.example");
-    Window w = new Window("Example").set!(Window.size)(400, 800) /+.set!(Window.resizeable)(false) +/ [
+    Window w = new Window("Example")
+        .set!(Window.size)(400, 800)
+      /+.set!(Window.resizeable)(false)+/ [
         new Stack() [
             new Column() [
                 new Paragraph() [
@@ -15,14 +16,15 @@ int main() {
             ],
             new Fixed() [
                 new Filter()
-                //  .set!(FixedChildE.position) (Point(0, 800))
-                //  .set!(Widget.visible)       (false)
+                  /+.set!(FixedChildE.position) (Point(0, 800))+/
+                  /+.set!(Widget.visible)       (false)+/
                     .identify!("fixedAnimated") [
                     new Text("You clicked !")
                 ]
             ]
         ]
     ];
+    w.closed ~= () => app.exit(0);
 
     auto btn = cast(Button) Widget.fromId!("btnClickHere");
     auto fixed = cast(Fixed) Widget.fromId!("fixedAnimated");
