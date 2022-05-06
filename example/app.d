@@ -1,9 +1,9 @@
 module app;
 
-int main() {
+int main() @safe {
     import super_.forms;
     import std.datetime: dur;
-    Application app = new Application("com.dadoum.example");
+    Application app = new Application("com.dadoum.example", ApplicationFlags.unique);
     Window w = new Window("Example")
         .set!(Window.size)(400, 800)
       /+.set!(Window.resizeable)(false)+/ [

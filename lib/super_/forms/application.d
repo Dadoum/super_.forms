@@ -135,9 +135,9 @@ enum ApplicationFlags {
 
         if (flags & ApplicationFlags.unique) {
             spawn(() shared {
+                import ddbus.c_lib;
                 while (!interrupted) {
-                    conn.tick();
-                    Thread.sleep(dur!"msecs"(200));
+                    dbus_connection_read_write_dispatch(conn.conn, -1);
                 }
             });
         }

@@ -7,8 +7,8 @@ version (SoftwareRender) {
     import super_.forms.windowing.defs;
 
     /++
- + Provides drawing on devices not supporting any hardware acceleration with Cairo.
- +/
+     + Provides drawing on devices not supporting any hardware acceleration with Cairo.
+     +/
     shared class SoftwareRenderer: Renderer {
         static shared(Renderer) build(shared Backend backend) {
             return null;

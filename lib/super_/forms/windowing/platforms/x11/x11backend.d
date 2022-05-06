@@ -24,6 +24,10 @@ import super_.forms.utils;
         connection = cast(immutable(xcb_connection_t*)) assertNotNull!xcb_connect(null, null);
     }
 
+    ~this() @trusted {
+        xcb_disconnect(cast(xcb_connection_t*) connection);
+    }
+
     public shared(NativeWindow) createWindow(SFWindow win) shared @safe {
         return new shared X11Window(this, win);
     }

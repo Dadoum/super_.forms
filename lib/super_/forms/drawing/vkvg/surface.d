@@ -3,12 +3,8 @@ module super_.forms.drawing.vkvg.surface;
 import erupted;
 import super_.forms.drawing.vkvg;
 
-class Surface/+(bool hardwareAccelerated)+/ {
-    //static if (hardwareAccelerated) {
-        package(super_.forms.drawing) vkvg_surface_t* handle;
-    //} else {
-    //    package(super_.forms.drawing) cairo_surface_t* handle;
-    //}
+class Surface {
+    package(super_.forms.drawing) vkvg_surface_t* handle;
     private bool owned = false;
 
     this(Device device, uint width, uint height) {

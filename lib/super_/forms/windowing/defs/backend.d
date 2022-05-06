@@ -30,11 +30,11 @@ shared synchronized interface Backend {
 
     package(super_.forms.windowing) RendererBuilderFunc[] rendererConstructorsFromBackendType(this R)() @trusted { // FIXME why trusted here ?
         RendererBuilderFunc[] ret = [];
-        static foreach_reverse (Type; InterfacesTuple!R) {
-            static if (is(Type == BackendCompatibleWith!U, U)) {
+        static foreach_reverse (Type; InterfacesTuple!R) {{
+            static if (is(Type: BackendCompatibleWith!U, U)) {
                 ret ~= Renderer.registerRenderer!(shared U).bFunc;
             }
-        }
+        }}
         return ret;
     }
 }

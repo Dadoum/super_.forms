@@ -39,7 +39,11 @@ class RendererException: Exception {
 
 auto typeOf(alias U)() @trusted {
     pragma(inline, true);
-    return typeid(cast(Object) U);
+    static if (isType!U) {
+        return typeid(U);
+    } else {
+        return typeid(cast(Object) U);
+    }
 }
 
 bool isOfType(T, U)(U obj) @trusted {

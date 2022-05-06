@@ -7,6 +7,8 @@ set(cocoa_default OFF)
 set(wayland_default OFF)
 set(x11_default OFF)
 
+set(dbus_default OFF)
+
 if(WIN32 OR MSVC OR MSYS OR MINGW)
     set(win32_default ON)
 elseif(APPLE)
@@ -14,6 +16,8 @@ elseif(APPLE)
 elseif(UNIX AND NOT APPLE)
     set(wayland_default ON)
     set(x11_default ON)
+
+    set(dbus_default ON)
 else()
     message(WARNING "Unsupported OS; no backend is enabled by default. ")
 endif()
@@ -22,6 +26,8 @@ option(has_win32    "Win32 support"      ${win32_default})
 option(has_cocoa    "Cocoa/STEP support" ${cocoa_default})
 option(has_wayland  "Wayland support"    ${wayland_default})
 option(has_x11      "X11 support"        ${x11_default})
+
+option(has_dbus      "DBus usage"         ${dbus_default})
 
 option(has_vulkan_render    "Vulkan renderer support"   ON)
 option(has_opengl_render    "OpenGL renderer support"   ON)
@@ -50,14 +56,19 @@ if (has_x11)
     target_compile_versions(super_forms PRIVATE X11)
 endif()
 
-if (has_vulkan_render)
-    target_compile_versions(super_forms PRIVATE VulkanRender)
+
+if (has_dbus)
+    target_compile_versions(super_forms PRIVATE DBus)
+endif()
+
+if (has_software_render)
+    target_compile_versions(super_forms PRIVATE SoftwareRender)
 endif()
 if (has_opengl_render)
     target_compile_versions(super_forms PRIVATE OpenGLRender)
 endif()
-if (has_software_render)
-    target_compile_versions(super_forms PRIVATE SoftwareRender)
+if (has_vulkan_render)
+    target_compile_versions(super_forms PRIVATE VulkanRender)
 endif()
 
    # ###########################################
@@ -67,11 +78,8 @@ endif()
 include(FetchContent)
 include(UseDub)
 
-DubProject_Add(ddbus ~3.0.0-beta.2)
-DubProject_Add(erupted ~2.1.45+v1.2.195)
 DubProject_Add(eventsystem ~2.0.0)
-
-target_link_libraries(super_forms PUBLIC ddbus erupted eventsystem)
+target_link_libraries(super_forms PUBLIC eventsystem)
 
 if (has_win32)
 
@@ -87,18 +95,27 @@ if (has_x11)
     target_link_libraries(super_forms PRIVATE xcb-d)
 endif()
 
+if (has_dbus)
+    DubProject_Add(ddbus ~3.0.0-beta.2)
+    target_link_libraries(super_forms PRIVATE ddbus)
+endif()
+
+if (has_software_render)
+
+endif()
+if (has_opengl_render)
+
+endif()
 if (has_vulkan_render)
+    DubProject_Add(erupted ~2.1.45+v1.2.195)
+
     FetchContent_Declare(
             vkvg
             GIT_REPOSITORY https://github.com/jpbruyere/vkvg.git
             GIT_TAG v0.2.1
     )
     FetchContent_MakeAvailable(vkvg)
-    target_link_libraries(super_forms PUBLIC vkvg_static stdc++)
-endif()
-
-if (has_software_render)
-
+    target_link_libraries(super_forms PRIVATE erupted vkvg_static stdc++)
 endif()
 
   ############################################
