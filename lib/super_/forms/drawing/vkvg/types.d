@@ -1,5 +1,7 @@
 module super_.forms.drawing.vkvg.types;
 
+version(VulkanRender):
+
 import core.stdc.stdint;
 
 enum Status {

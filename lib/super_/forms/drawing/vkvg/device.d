@@ -1,5 +1,7 @@
 module super_.forms.drawing.vkvg.device;
 
+version(VulkanRender):
+
 import erupted;
 import super_.forms.drawing.vkvg;
 

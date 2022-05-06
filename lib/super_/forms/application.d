@@ -144,7 +144,7 @@ enum ApplicationFlags {
                 spawn(() shared {
                     import ddbus.c_lib;
                     while (!interrupted) {
-                        dbus_connection_read_write_dispatch(conn.conn, -1);
+                        dbus_connection_read_write_dispatch(conn.conn, 20);
                     }
                 });
             }

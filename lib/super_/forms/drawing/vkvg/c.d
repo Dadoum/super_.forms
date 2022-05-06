@@ -1,5 +1,7 @@
 module super_.forms.drawing.vkvg.c;
 
+version(VulkanRender):
+
 import core.stdc.stdint;
 import erupted;
 import super_.forms.utils;

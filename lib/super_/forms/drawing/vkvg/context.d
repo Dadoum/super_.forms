@@ -1,5 +1,7 @@
 module super_.forms.drawing.vkvg.context;
 
+version(VulkanRender):
+
 import std.string;
 import super_.forms.drawing;
 import super_.forms.drawing.vkvg;
