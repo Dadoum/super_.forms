@@ -1,7 +1,6 @@
 module super_.forms.application;
 
 import core.runtime: Runtime;
-import ddbus;
 import std.algorithm;
 import std.array;
 import std.concurrency;
@@ -27,12 +26,16 @@ enum ApplicationFlags {
  +/
 @safe private shared class ApplicationPriv {
     private const(ApplicationFlags) flags;
-    private __gshared Connection conn;
     private shared(bool[]) idRunning = [];
     private shared(bool) interrupted;
     private shared(bool) launched = false;
     private shared(int) exitCode = 0;
-    private shared(bool) requiresDbusCheck = false;
+
+    version (DBus) {
+        import ddbus;
+        private __gshared Connection conn;
+        private shared(bool) requiresDbusCheck = false;
+    }
 
     private Event!(string[]) startedEvent;
     private Event!(string[]) activatedEvent;
@@ -106,40 +109,45 @@ enum ApplicationFlags {
         import core.thread.osthread;
         import std.concurrency;
 
-        conn = connectToBus();
         string[] args = Runtime.args;
+        version (DBus) {
+            import ddbus;
+            conn = connectToBus();
 
-        if (flags & ApplicationFlags.unique) {
-            requiresDbusCheck = true;
-            BusName bus = busName(identifier);
-            InterfaceName iface = interfaceName(identifier);
-            ObjectPath path = ObjectPath("/");
-            if (!conn.requestName(bus)) {
-                PathIface obj = new PathIface(conn, bus, path, iface);
-                obj.activate(args);
-                Application.exit(0);
-            } else {
-                MessageRouter router = new MessageRouter();
-                MessagePattern patt = MessagePattern(path, iface, "activate");
-                router.setHandler(patt, (string[] args) => activated.emit(args[1..$]));
-                conn.registerRouter(router);
-                destroy(patt);
+            if (flags & ApplicationFlags.unique) {
+                requiresDbusCheck = true;
+                BusName bus = busName(identifier);
+                InterfaceName iface = interfaceName(identifier);
+                ObjectPath path = ObjectPath("/");
+                if (!conn.requestName(bus)) {
+                    PathIface obj = new PathIface(conn, bus, path, iface);
+                    obj.activate(args);
+                    Application.exit(0);
+                } else {
+                    MessageRouter router = new MessageRouter();
+                    MessagePattern patt = MessagePattern(path, iface, "activate");
+                    router.setHandler(patt, (string[] args) => activated.emit(args[1..$]));
+                    conn.registerRouter(router);
+                    destroy(patt);
+                }
+                destroy(bus);
+                destroy(iface);
+                destroy(path);
             }
-            destroy(bus);
-            destroy(iface);
-            destroy(path);
         }
 
         started.emit(args);
         destroy(args);
 
-        if (flags & ApplicationFlags.unique) {
-            spawn(() shared {
-                import ddbus.c_lib;
-                while (!interrupted) {
-                    dbus_connection_read_write_dispatch(conn.conn, -1);
-                }
-            });
+        version (DBus) {
+            if (flags & ApplicationFlags.unique) {
+                spawn(() shared {
+                    import ddbus.c_lib;
+                    while (!interrupted) {
+                        dbus_connection_read_write_dispatch(conn.conn, -1);
+                    }
+                });
+            }
         }
 
         launched = true;
